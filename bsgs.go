@@ -25,13 +25,22 @@ func main() {
 	little_m := m.Int64()
 
 	//TODO: For now this will be the string rep of BigInts for the map key.
-	//      This is terribly inefficient and I hope to convert this to a bloom
-	//      filter that leverages bit-level ops.
+	//      This is terribly inefficient and I hope to leverage a bloom filter somehow. 
 	baby_step := make(map[string]int64)
 	var bs big.Int
+    //Speed up modexp by saving previous result.
+    var prev *big.Int
 	for i := int64(0); i < little_m; i++ {
-		bs.Exp(g, big.NewInt(i), modulus)
+        if prev == nil {
+           bs.Exp(g, big.NewInt(i), modulus)
+           baby_step[bs.String()] = i
+           prev = &bs
+           continue
+        }
+		bs.Mul(prev, g)
+        bs.Mod(&bs, modulus)
 		baby_step[bs.String()] = i
+        prev = &bs
 	}
 
 	var inv big.Int
