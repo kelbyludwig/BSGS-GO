@@ -2,9 +2,23 @@ package main
 
 import (
 	"fmt"
-	"github.com/cznic/mathutil"
 	"math/big"
+	"github.com/cznic/mathutil"
+    "github.com/kelbyludwig/fnv"
 )
+
+func add_bloom(bloom uint64, value []byte) uint64 {
+    bloom |= fnv.FNV1A(value)
+    return bloom
+}
+
+func check_bloom(bloom uint64, value []byte) bool {
+    test := (fnv.FNV1A(value)) | bloom
+    if test == bloom {
+        return true
+    }
+    return false
+}
 
 func main() {
 
@@ -24,21 +38,26 @@ func main() {
 	//Little m is just used for the baby step loop.
 	little_m := m.Int64()
 
-	//TODO: For now this will be the string rep of BigInts for the map key.
-	//      This is terribly inefficient and I hope to leverage a bloom filter somehow. 
+    //Tiny bloom filter!
+    var bloom uint64
+    bloom = 0
+
 	baby_step := make(map[string]int64)
 	var bs big.Int
+
     //Speed up modexp by saving previous result.
     var prev *big.Int
 	for i := int64(0); i < little_m; i++ {
         if prev == nil {
            bs.Exp(g, big.NewInt(i), modulus)
+           bloom = add_bloom(bloom, bs.Bytes())
            baby_step[bs.String()] = i
            prev = &bs
            continue
         }
 		bs.Mul(prev, g)
         bs.Mod(&bs, modulus)
+        bloom = add_bloom(bloom, bs.Bytes())
 		baby_step[bs.String()] = i
         prev = &bs
 	}
@@ -54,13 +73,22 @@ func main() {
 		res.Exp(&inv, gs, modulus)
 		res.Mul(&res, h)
 		res.Mod(&res, modulus)
-		if val,exists := baby_step[res.String()]; exists {
-            var dl big.Int
-            gs.Mul(gs,m)
-            dl.Add(big.NewInt(val), gs)
-			fmt.Println("[RESULT] ", dl.String())
-			return
-		}
+        if check_bloom(bloom, res.Bytes()) {
+            fmt.Println("[DEBUG] Bloom hit!")
+		    if val,exists := baby_step[res.String()]; exists {
+                var dl big.Int
+                gs.Mul(gs,m)
+                dl.Add(big.NewInt(val), gs)
+                fmt.Println("[RESULT] ", dl.String())
+                return
+		    }
+        } else {
+            fmt.Println("[DEBUG] Bloom miss!")
+        }
+        if gs.Cmp(m) == 1 {
+            fmt.Println("[RESULT] Exponent not found.")
+            return
+        }
 		gs.Add(gs, big.NewInt(1))
 	}
 }
